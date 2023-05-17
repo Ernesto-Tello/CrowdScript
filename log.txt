@@ -1,0 +1,214 @@
+5/16/2023 5:34:48 PM OAuth Request Status Code: Created
+JsonbatchBody ready for POST 
+MXLADM_GBT45B3 - Could not establish sensor comms
+MXHADM_18JKTG3 - Could not establish sensor comms
+MXHADM_32GHX93 - Could not establish sensor comms
+MXLADM_8MG7M72 - Could not establish sensor comms
+MXHADM_FHTDN32 - Could not establish sensor comms
+MXHADM_3F5PHS3 - Could not establish sensor comms
+MXHADM_3P8GZ93 - Could not establish sensor comms
+MXHADM_DV7FHS3 - Could not establish sensor comms
+MXHADM_DPWNNT2 - Could not establish sensor comms
+MXHADM_D6JD4D3_ - Could not establish sensor comms
+5/16/2023 5:34:52 PM Batch-init-Session Request Status Code: Created
+5/16/2023 5:34:52 PM Batch ID:03043ef1-c5a7-4daf-9678-38a25d166c16
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10CO0319
+host_name - MXVMW10CO0319
+aid - 0b073d25d1b64cc5a120b305a5d41b0f
+complete - True
+session_id - 6c6f0255-3bfc-41c3-ae82-994f3b4b27a6
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXLADM_GBT45B3
+host_name - MXLADM_GBT45B3
+aid - 1432e47ee8fe48b1ad3c5a63665a9923
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_18JKTG3
+host_name - MXHADM_18JKTG3
+aid - 2d4a389ce5d54d16959989f460869ea6
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_32GHX93
+host_name - MXHADM_32GHX93
+aid - 32fb7ff5e7c44d2ca7d77ab48c516695
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10IN002
+host_name - MXVMW10IN002
+aid - 353b2cb2e5774d798332196dd4515571
+complete - True
+session_id - 4e142398-fe63-4935-b533-2744e8f1cce5
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXLADM_8MG7M72
+host_name - MXLADM_8MG7M72
+aid - 3934e8b255d84db7aa9a1e9cf2503baa
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10CO0352
+host_name - MXVMW10CO0352
+aid - 3a9c56db26ae45d8bb9368ca19269f91
+complete - True
+session_id - 90aacd7b-9cb3-45ce-9430-a9d80f32668f
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_FHTDN32
+host_name - MXHADM_FHTDN32
+aid - 3d8cf76100f04ee3ab24d35c7a3fa4cc
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10BO004
+host_name - MXVMW10BO004
+aid - 49d1a04b12a042e5aef9db1355701b83
+complete - True
+session_id - b2bd2eaa-18f2-4a0e-bbc9-cbfe1c96c441
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10CO179
+host_name - MXVMW10CO179
+aid - 55524afd194c4b76b9aec4d4880cc8ad
+complete - True
+session_id - 6afb2dd9-68a2-40c5-a721-e22c5906e946
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10CO0014
+host_name - MXVMW10CO0014
+aid - 7a030b6fdf5048f799ddcdf40e58e769
+complete - True
+session_id - afe733a6-3ac2-4e67-8772-3dbb1b5953f7
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10LA062
+host_name - MXVMW10LA062
+aid - 83e1421eb43640c98b3506572bfb10fe
+complete - True
+session_id - ea085c4f-4734-492d-8845-35193f4d509f
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXHADM_79H9PT2
+host_name - MXHADM_79H9PT2
+aid - 8a7bce4427bf49a2aeee679490cc7ae8
+complete - True
+session_id - 09c6cb2f-9c3f-4869-9833-44971ff9b77d
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXHADM_1BLN6Y2
+host_name - MXHADM_1BLN6Y2
+aid - 9434636ae26f4947882e79cad67a8977
+complete - True
+session_id - 9b160ae9-085c-4474-aec9-7290e6a278da
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:MXVMW10CO0141
+host_name - MXVMW10CO0141
+aid - a6c5a50e3982485dbf11a3a51e1f241b
+complete - True
+session_id - b3e859b6-32a0-4d41-8ca3-668cb6424dea
+stdout - C:\
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_3F5PHS3
+host_name - MXHADM_3F5PHS3
+aid - e84623a173254047b0a191fd9c4a630f
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_3P8GZ93
+host_name - MXHADM_3P8GZ93
+aid - f16deac3a2ba40f3bc633e2614f3d826
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_DV7FHS3
+host_name - MXHADM_DV7FHS3
+aid - f2f399db7d1c47ec8a76f74241f1757c
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_DPWNNT2
+host_name - MXHADM_DPWNNT2
+aid - f71bec9648de4385bdf9a95ac3f0386f
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
+5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:MXHADM_D6JD4D3_
+host_name - MXHADM_D6JD4D3_
+aid - f95e90bfa7bf495bab926c66dadb5014
+complete - False
+session_id - 
+stdout - 
+stderr - 
+query_time - 0
+offline_queued - False
+errors - 40401 - Could not establish sensor comms
