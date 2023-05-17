@@ -6,7 +6,7 @@ HOST456 - Could not establish sensor comms
 5/16/2023 5:34:52 PM Batch ID:03043ef1-c5a7-4daf-9678-38a25d166c16
 5/16/2023 5:34:52 PM Initiated session on host, Details Shown Below:HOST123
 host_name - HOST123
-aid - 12343d25d1b64cc5a120b305a5d41b0f
+aid - 12345675d1b64cc5a120b305a5d41b0f
 complete - True
 session_id - 6c6f0255-3bfc-41c3-ae82-994f3b4b27a6
 stdout - C:\
@@ -16,7 +16,7 @@ offline_queued - False
 errors - 
 5/16/2023 5:34:52 PM Could not initiate session on host, Details Shown Below:HOST456
 host_name - HOST456
-aid - 1234e47ee8fe48b1ad3c5a63665a9923
+aid - 1234567ee8fe48b1ad3c5a63665a9923
 complete - False
 session_id - 
 stdout - 
