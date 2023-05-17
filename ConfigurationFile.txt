@@ -1,0 +1,6 @@
+File name:
+Base Command:runscript
+Main Command:runscript -CloudFile="MyScript" -CommandLine="" -Timeout=180
+Post Install Base Command:
+Post Install Main Command:
+Queue Offline:False
