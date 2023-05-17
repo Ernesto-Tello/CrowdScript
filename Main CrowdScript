@@ -1,0 +1,506 @@
+using System;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using RestSharp;
+using System.IO;
+using System.Collections.Generic;
+using RestSharp.Authenticators;
+using RestSharp.Authenticators.OAuth2;
+using System.ComponentModel;
+using System.Runtime.Serialization;
+using System.Reflection;
+using System.Collections.Generic;
+using static System.Collections.Specialized.BitVector32;
+using System.Security.Principal;
+using System.Resources;
+using System.Collections;
+using System.Security.Cryptography;
+using System.Net.Sockets;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace CrowdStrike_SW_Deployment
+{
+    class Program
+    {
+        public static string baseURL = "https://api.crowdstrike.com ";
+        public static string wd = new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName;
+        public static string computersList = wd + "//TXT//ComputersList.txt";
+        public static string configFile = wd + "//TXT//ConfigurationFile.txt";
+        public static string logFile = wd + "//TXT//log.txt";
+        public static string ResultsTxt = wd + "//TXT//Results.txt";
+        public static string ConfRtrFileName = File.ReadLines(configFile).First().Split(':').LastOrDefault();
+
+        
+        static void Main(string[] args)
+        {
+            string baseCmd = File.ReadLines(configFile).Skip(1).Take(1).First().Split(':').LastOrDefault();
+            string mainCmd = File.ReadLines(configFile).Skip(2).Take(1).First().Split(':').LastOrDefault();
+
+            string secret = "jS0XA9gyhEim5CTlJUbet7Fq8GsZ36w4Dax12nLN";
+            string clientId = "25c9f63b71414eeda2f92752dbd8b0f3";
+            string oauthData = "client_id=" + clientId + "&client_secret=" + secret;
+            RestClient client = new RestClient(baseURL);
+
+            //GET OAUTH TOKEN from API
+           string token = GetToken(client, clientId, secret);
+            //Get metadata from API for the filename in config txt; based on Only Run Script Parameter
+            string rtrFileId = "";
+            if (ConfRtrFileName != "")
+            {
+                rtrFileId = GetRtrPutFileId(token, client);
+            }
+            // GET Device IDs from API
+            Dictionary<string, string> devIds = GetDeviceIds(token, client);
+
+            // Create Batch Body for the POST request to initiate multple sessions
+            string JsonbatchBody = CreateBatchBody(devIds);
+            File.AppendAllText(logFile, "JsonbatchBody ready for POST \r\n");
+            // Initiate a batch session
+            string batchSessUri = "/real-time-response/combined/batch-init-session/v1?timeout=30&host_timeout_duration=25s";
+            RestRequest sessionRqst = new RestRequest(batchSessUri, Method.Post);
+            sessionRqst.AddHeader("accept", "application/json");
+            sessionRqst.AddHeader("Content-Type", "application/json");
+            sessionRqst.AddHeader("Authorization", "Bearer " + token);
+            sessionRqst.AddBody(JsonbatchBody);
+            RestResponse sessionResponse = client.Execute(sessionRqst);
+            SessRoot session = JsonConvert.DeserializeObject<SessRoot>(sessionResponse.Content);
+            // Log Session Response Data
+            string batchId = session.batch_id;
+            if(session.errors.Count() > 0)
+            {
+                string batchError = session.errors.FirstOrDefault().code + " - " + session.errors.FirstOrDefault().message;
+                File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + batchId + " Error:\r\n");
+                File.AppendAllText(logFile, batchError + "\r\n");
+                Console.WriteLine("Batch Session Error: Session ID = " + batchId + " "+ batchError + "\r\n");
+            }
+            foreach(var ss in session.resources.Values) //Logs Communication Errors
+            {
+                if (ss.errors.Count() > 0)
+                {
+                    var dev = devIds.Where(x => x.Value == ss.aid).FirstOrDefault();
+                    File.AppendAllText(logFile, dev.Key + " - " + ss.errors.FirstOrDefault().message + "\r\n");
+                    Console.WriteLine(dev.Key + " - " + ss.errors.FirstOrDefault().message + "\r\n");
+                }
+            }
+            File.AppendAllText(logFile, DateTime.Now + " Batch-init-Session Request Status Code: " + sessionResponse.StatusCode.ToString() + "\r\n");
+            File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + batchId + "\r\n");
+
+            Dictionary<string, string> HostAid = new Dictionary<string, string>();
+            foreach (var sess in session.resources)
+            {
+                Dictionary<string, string> sessValues = new Dictionary<string, string>();
+                var host_name = devIds.FirstOrDefault(x => x.Value == sess.Value.aid).Key;
+                string errors = "";
+                foreach (var err in sess.Value.errors)
+                {
+                    errors += err.code.ToString() + " - " + err.message;
+                }
+                sessValues.Add("host_name", host_name);
+                sessValues.Add("aid", sess.Value.aid);
+                sessValues.Add("complete", sess.Value.complete.ToString());
+                sessValues.Add("session_id", sess.Value.session_id);
+                sessValues.Add("stdout", sess.Value.stdout);
+                sessValues.Add("stderr", sess.Value.stderr);
+                sessValues.Add("query_time", sess.Value.query_time.ToString());
+                sessValues.Add("offline_queued", sess.Value.offline_queued.ToString());
+                sessValues.Add("errors", errors);
+                HostAid.Add(sessValues.ElementAt(0).Value, sessValues.ElementAt(1).Value);
+                if (sess.Value.complete == false)
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " Could not initiate session on host, Details Shown Below:"+ sessValues.ElementAt(0).Value +"\r\n");
+                    for (int i = 0; i< sessValues.Count; i++)
+                    {
+                        File.AppendAllText(logFile, sessValues.ElementAt(i).Key + " - " + sessValues.ElementAt(i).Value + "\r\n");
+                    }
+                }
+                else 
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " Initiated session on host, Details Shown Below:" + sessValues.ElementAt(0).Value + "\r\n");
+                    for (int i = 0; i < sessValues.Count; i++)
+                    {
+                        File.AppendAllText(logFile, sessValues.ElementAt(i).Key + " - " + sessValues.ElementAt(i).Value + "\r\n");
+                    }
+                }
+            }
+            // Step 2 Send Command
+            string text = File.ReadLines(configFile).Skip(2).First().Split(':').LastOrDefault();
+            string hh = "\\" + "\"";
+            var command = text.Replace("\"", hh);
+            string JsonbatchCmdBody = "{\"command_string\":\"" + command + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmd + "\"}";
+            //string batchSessCmdUri = "https://api.crowdstrike.com/real-time-response/combined/batch-command/v1?timeout=300&host_timeout_duration=295s";
+            string batchSessCmdUri = "/real-time-response/combined/batch-active-responder-command/v1?timeout=300&host_timeout_duration=295s";
+            RestRequest BatchSessCmdRqst = new RestRequest(batchSessCmdUri, Method.Post);
+            BatchSessCmdRqst.AddHeader("accept", "application/json");
+            BatchSessCmdRqst.AddHeader("Content-Type", "application/json");
+            BatchSessCmdRqst.AddHeader("Authorization", "Bearer " + token);
+            BatchSessCmdRqst.AddBody(JsonbatchCmdBody);
+            RestResponse CmdResponse = client.Execute(BatchSessCmdRqst);
+            BatchCMDResponseRoot batCmdResp = JsonConvert.DeserializeObject<BatchCMDResponseRoot>(CmdResponse.Content);
+
+            if (batCmdResp.Errors.Count() > 0 )
+            {
+                try
+                {
+                    File.AppendAllText(logFile, "\r\n Batch Session Not Created: \r\n" );
+                    File.AppendAllText(logFile, batCmdResp.Errors.FirstOrDefault().ToString());
+                }
+                catch(Exception e)
+                {
+                    File.AppendAllText(logFile, e.Message);
+                }
+                
+            }
+            else
+            {
+                for(int i = 0; i < batCmdResp.Combined.Resources.Count; i++ )
+                {
+                    foreach(var ho in HostAid)
+                    {
+                        if (ho.Value == batCmdResp.Combined.Resources.ElementAt(i).Key) 
+                        { 
+                            File.AppendAllText(ResultsTxt, DateTime.Now + " HOST: " + ho.Key + " = " + ho.Value + "\r\n");
+                            Console.WriteLine(DateTime.Now + " HOST: " + ho.Key + " = " + ho.Value + "\r\n");
+                        }
+                    }
+
+                    File.AppendAllText(ResultsTxt, "Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete + "\r\n");
+                    Console.WriteLine("Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete + "\r\n");
+                    File.AppendAllText(ResultsTxt, "StdOut: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stdout + "\r\n");
+                    File.AppendAllText(ResultsTxt, "StdErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stderr + "\r\n");
+                    if(batCmdResp.Combined.Resources.ElementAt(i).Value.errors.Count() > 0)
+                    {
+                        File.AppendAllText(ResultsTxt, "OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
+                        Console.WriteLine("OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
+                    }
+                    
+                }
+            }
+            
+            
+
+            //SessRoot batchCmdResponse = JsonConvert.DeserializeObject<SessRoot>(CmdResponse.Content);
+            // Step 3 refersh session
+            // Step 4 Get command status, refresh session
+            // Step 5 Execute post install commands, wait
+            // Step 6 refresh session
+            // Step 7 Get post install command status
+
+            revokeToken(token, client);
+
+        }
+        public static Dictionary<string, string> GetDeviceIds(string Token, RestClient restClient)
+        {
+            var devIds = new Dictionary<string, string>();
+            List<string> txtDevices = File.ReadAllLines(computersList).ToList();
+            foreach (string txtDevice in txtDevices)
+            {
+                Console.WriteLine("Getting Device ID from CS \r\n");
+                //filter by platform, serial_number, hostname
+                string hostsUri = "/devices/queries/devices/v1?limit=10&filter=hostname:" + "'" + txtDevice + "'";
+                RestRequest deviceRequest = new RestRequest(hostsUri, Method.Get);
+                deviceRequest.AddHeader("Accept", "application/json");
+                deviceRequest.AddHeader("Authorization", "Bearer " + Token);
+                RestResponse deviceResponse = restClient.Execute(deviceRequest);
+                GetDevices device = JsonConvert.DeserializeObject<GetDevices>(deviceResponse.Content);
+
+                if (device.resources == null || device.resources.Count == 0)
+                {
+                    Console.WriteLine(txtDevice + " - not found");
+                }
+                else
+                {
+                    Console.WriteLine(txtDevice + " - " + device.resources.FirstOrDefault());
+                    devIds.Add(txtDevice, device.resources.FirstOrDefault());
+                }
+            }
+            return devIds;
+        }
+        public static string CreateBatchBody(Dictionary<string, string> devIds)
+        {
+            string batchBody = "{\"host_ids\":[";
+            string batchBodEnd = "]}";
+
+            for (int i = 0; i < devIds.Count(); i++)
+            {
+                if (i != devIds.Count() - 1)
+                {
+                    batchBody += "\"" + devIds.ElementAt(i).Value + "\",";
+                }
+                else if (i == devIds.Count() - 1)
+                {
+                    batchBody += "\"" + devIds.ElementAt(i).Value + "\"";
+                    batchBody += batchBodEnd;
+                }
+
+            }
+            return batchBody;
+        }
+        public static string GetToken(RestClient restClient, string clientId, string secret)
+        {
+            string token = "";
+            string oauthData = "client_id=" + clientId + "&client_secret=" + secret;
+            RestRequest authRequest = new RestRequest("/oauth2/token", Method.Post);
+            authRequest.AddHeader("Accept", "application/json");
+            authRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
+            authRequest.AddStringBody(oauthData, ContentType.Plain);
+            try
+            {
+                RestResponse oauthResponse = restClient.Execute(authRequest);
+                oauth2Token oauthdData = JsonConvert.DeserializeObject<oauth2Token>(oauthResponse.Content);
+                token = oauthdData.access_token;
+
+                if (oauthResponse.StatusCode == System.Net.HttpStatusCode.Created)
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString() + "\r\n");
+                }
+                else
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString() + "\r\n");
+                    if (oauthResponse.ErrorMessage != null)
+                    {
+                        File.AppendAllText(logFile, "OAuth Request Error: " + oauthResponse.ErrorMessage + "\r\n");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(logFile, DateTime.Now + " OAuth Exception - " + ex.Message + "\r\n");
+            }
+            return token;
+        }
+        public static void revokeToken(string Token, RestClient restClient) 
+        {
+            string clientId = "25c9f63b71414eeda2f92752dbd8b0f3";
+            string secret = "jS0XA9gyhEim5CTlJUbet7Fq8GsZ36w4Dax12nLN";
+            string atobb64auth = Base64Encode(clientId + ":"+ secret);
+            RestRequest revokeRequest = new RestRequest("/oauth2/revoke", Method.Post);
+            revokeRequest.AddHeader("accept", "application/json");
+            revokeRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
+            revokeRequest.AddHeader("Authorization", "basic " + atobb64auth);
+            revokeRequest.AddBody("token="+Token); //OK
+            RestResponse tokenRevokeResponse = restClient.Execute(revokeRequest);
+            if (tokenRevokeResponse.StatusCode == System.Net.HttpStatusCode.OK) 
+            {
+                Console.WriteLine("Token Revoked Successfully");
+            }
+            else
+            {
+                Console.WriteLine("Token was not successfully revoked");
+            }
+
+
+        }
+        public static string GetRtrPutFileId(string Token, RestClient restClient)
+        {
+            string rtrFileId = "";
+            string rtrPutFiles = "/real-time-response/entities/put-files/v2";
+            RestRequest rtrPutRequest = new RestRequest(rtrPutFiles, Method.Get);
+            rtrPutRequest.AddHeader("Accept", "application/json");
+            rtrPutRequest.AddHeader("Authorization", "Bearer " + Token);
+            try
+            {
+                RestResponse rtrPutResponse = restClient.Execute(rtrPutRequest);
+                RtrPut rtrPutData = JsonConvert.DeserializeObject<RtrPut>(rtrPutResponse.Content);
+                if (rtrPutResponse.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " RTR Put-File Response - " + rtrPutResponse.StatusCode + "\r\n");
+                    var rtrFileMatch = rtrPutData.resources.FirstOrDefault(x => x.name == ConfRtrFileName);
+                    rtrFileId = rtrFileMatch.id;
+                    var rtrFileName = rtrFileMatch.name;
+                    File.AppendAllText(logFile, DateTime.Now + " RTR Put-File Name/ID - " + rtrFileName + " " + rtrFileId + "\r\n");
+                }
+                else
+                {
+                    File.AppendAllText(logFile, DateTime.Now + " RTR Put-File Response - " + rtrPutResponse.StatusCode + "\r\n");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(logFile, DateTime.Now + " RTR Put-File Exception - " + ex.Message + "\r\n");
+            }
+            return rtrFileId;
+        }
+
+        public static string Base64Encode(string plainText)
+        {
+            var plainTextBytes = System.Text.Encoding.UTF8.GetBytes(plainText);
+            return System.Convert.ToBase64String(plainTextBytes);
+        }
+        public static string Base64Decode(string base64EncodedData)
+        {
+            var base64EncodedBytes = System.Convert.FromBase64String(base64EncodedData);
+            return System.Text.Encoding.UTF8.GetString(base64EncodedBytes);
+        }
+    }
+    //oauth2 Token Classes
+    public class oauth2Token
+    {
+        public string access_token { get; set; }
+        public int expires_in { get; set; }
+        public string token_type { get; set; }
+    }
+
+    //Revoke Token Classes
+    public class revokeTokenRoot
+    {
+        public List<revokeTokenError> errors { get; set; }
+        public revokeTokenMeta meta { get; set; }
+    }
+    public class revokeTokenError
+    {
+        public int code { get; set; }
+        public string id { get; set; }
+        public string message { get; set; }
+    }
+    public class revokeTokenMeta
+    {
+        public revokeTokenPagination pagination { get; set; }
+        public string powered_by { get; set; }
+        public int query_time { get; set; }
+        public string trace_id { get; set; }
+        public revokeTokenWrites writes { get; set; }
+    }
+
+    public class revokeTokenPagination
+    {
+        public int limit { get; set; }
+        public int offset { get; set; }
+        public int total { get; set; }
+    }
+    public class revokeTokenWrites
+    {
+        public int resources_affected { get; set; }
+    }
+    //Token class to be used for revoking
+    [DataContract]
+    public class Token
+    {
+        [DataMember]
+        public string token { get; set; }
+    }
+
+    //Get Devices Class
+    public class Meta
+    {
+        public double query_time { get; set; }
+        public Pagination pagination { get; set; }
+        public string powered_by { get; set; }
+        public string trace_id { get; set; }
+    }
+
+    public class Pagination
+    {
+        public int offset { get; set; }
+        public int limit { get; set; }
+        public int total { get; set; }
+    }
+
+    public class GetDevices
+    {
+        public Meta meta { get; set; }
+        public List<string> resources { get; set; }
+        public List<object> errors { get; set; }
+    }
+
+    // RTR PUT Classes
+    public class RtrPutMeta
+    {
+        public double query_time { get; set; }
+        public string powered_by { get; set; }
+        public string trace_id { get; set; }
+    }
+
+    public class RtrPutResource
+    {
+        public string id { get; set; }
+        public string name { get; set; }
+        public string description { get; set; }
+        public string file_type { get; set; }
+        public List<string> platform { get; set; }
+        public int size { get; set; }
+        public string created_by { get; set; }
+        public string created_by_uuid { get; set; }
+        public string created_timestamp { get; set; }
+        public string modified_by { get; set; }
+        public string modified_timestamp { get; set; }
+        public string sha256 { get; set; }
+        public string permission_type { get; set; }
+        public int run_attempt_count { get; set; }
+        public int run_success_count { get; set; }
+        public bool share_with_workflow { get; set; }
+        public bool workflow_is_disruptive { get; set; }
+        public string comments_for_audit_log { get; set; }
+    }
+
+    public class RtrPut
+    {
+        public Meta meta { get; set; }
+        public List<RtrPutResource> resources { get; set; }
+    }
+
+
+    // RTR SESION POST
+    public class rtrSesionData
+    {
+        public string device_id { get; set; }
+        public string origin { get; set; }
+        public string queue_offline { get; set; }
+    }
+
+
+    // BATCH SESSION 
+    public class Resource
+    {
+        public string session_id { get; set; }
+        public Guid TaskId { get; set; }
+        public bool complete { get; set; }
+        public string stdout { get; set; }
+        public string stderr { get; set; }
+        public string BaseCommand { get; set; }
+        public string aid { get; set; }
+        public List<SessError> errors { get; set; }
+        public string query_time { get; set; }
+        public bool offline_queued { get; set; }
+    }
+
+    public class SessError
+    {
+        public int code { get; set; }
+        public string message { get; set; }
+    }
+
+    public class SessMeta
+    {
+        public double query_time { get; set; }
+        public string powered_by { get; set; }
+        public string trace_id { get; set; }
+    }
+
+    public class SessRoot
+    {
+        public Meta meta { get; set; }
+        public string batch_id { get; set; }
+        public Dictionary<string, Resource> resources { get; set; }
+        public List<SessError> errors { get; set; }
+    }
+
+    // Batch CMD Response
+    public partial class BatchCMDResponseRoot
+    {
+        [JsonProperty("meta")]
+        public Meta Meta { get; set; }
+
+        [JsonProperty("combined")]
+        public Combined Combined { get; set; }
+
+        [JsonProperty("errors")]
+        public object[] Errors { get; set; }
+    }
+    public partial class Combined
+    {
+        [JsonProperty("resources")]
+        public Dictionary<string, Resource> Resources { get; set; }
+    }
+
+}
