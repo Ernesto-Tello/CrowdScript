@@ -1,6 +1,10 @@
 File name:
 Base Command:runscript
-Main Command:runscript -CloudFile="MyScript" -CommandLine="" -Timeout=180
+Main Command:runscript -CloudFile="Check Enviorment Variables" -CommandLine="" -Timeout=180
 Post Install Base Command:
 Post Install Main Command:
 Queue Offline:False
+Session Timeout:120
+RTR Cmd Timeout:300
+API Secret:MY_CS_API_Secret
+API Client ID:MY_CS_API_ClientID
