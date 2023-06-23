@@ -112,7 +112,6 @@ namespace CrowdStrike_SW_Deployment
                 }
             }
 
-            // Step 2 Send Command
             string text = File.ReadLines(configFile).Skip(2).First().Split(':').LastOrDefault();
             string hh = "\\" + "\"";
             var command = text.Replace("\"", hh);
