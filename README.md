@@ -5,7 +5,8 @@ This will execute any PS, bash, or CS builtin commands on the hosts specified in
 
 The results of those commands, if any, should be written to the "Results.txt" file. 
 
-In the confiugration file, most lines are not used. I have future plans for those lines. The main focus is on the Base command and Main command. If you need to use the built in commands, the base command and main command are the same. For exmaple: Base Command:ps Main Command:ps
+The main focus is on the Base command and Main command. If you need to use the built in commands, the base command and main command are the same. For exmaple: Base Command:ps Main Command:ps
 
 When using a PS or bash script, save it in CS first and replace:
 -CloudFile="MyScript"
+the base command for scripts saved in CS is: runscript
