@@ -27,22 +27,28 @@ namespace CrowdStrike_SW_Deployment
         public static string computersList = wd + "//TXT//ComputersList.txt";
         public static string configFile = wd + "//TXT//ConfigurationFile.txt";
         public static string logFile = wd + "//TXT//log.txt";
-        public static string ResultsTxt = wd + "//TXT//Results.txt";
         public static string ConfRtrFileName = File.ReadLines(configFile).First().Split(':').LastOrDefault();
 
-        
         static void Main(string[] args)
         {
             string baseCmd = File.ReadLines(configFile).Skip(1).Take(1).First().Split(':').LastOrDefault();
             string mainCmd = File.ReadLines(configFile).Skip(2).Take(1).First().Split(':').LastOrDefault();
-
-            string secret = "jS0XA9gyhEim5CTlJUbet7Fq8GsZ36w4Dax12nLN";
-            string clientId = "25c9f63b71414eeda2f92752dbd8b0f3";
+            string sTime = File.ReadLines(configFile).Skip(6).Take(1).First().Split(':').LastOrDefault();
+            int st = Convert.ToInt32(sTime) - 5;
+            string rTime = File.ReadLines(configFile).Skip(7).Take(1).First().Split(':').LastOrDefault();
+            int rt = Convert.ToInt32(sTime) - 5;
+            string secret = File.ReadLines(configFile).Skip(8).Take(1).First().Split(':').LastOrDefault();
+            string clientId = File.ReadLines(configFile).Skip(9).Take(1).First().Split(':').LastOrDefault();
             string oauthData = "client_id=" + clientId + "&client_secret=" + secret;
-            RestClient client = new RestClient(baseURL);
-
+            RestClientOptions options = new RestClientOptions(baseURL)
+            {
+                MaxTimeout = 300000,
+            };
+            RestClient client = new RestClient(options);
+            
             //GET OAUTH TOKEN from API
            string token = GetToken(client, clientId, secret);
+
             //Get metadata from API for the filename in config txt; based on Only Run Script Parameter
             string rtrFileId = "";
             if (ConfRtrFileName != "")
@@ -55,88 +61,75 @@ namespace CrowdStrike_SW_Deployment
             // Create Batch Body for the POST request to initiate multple sessions
             string JsonbatchBody = CreateBatchBody(devIds);
             File.AppendAllText(logFile, "JsonbatchBody ready for POST \r\n");
-            // Initiate a batch session
-            string batchSessUri = "/real-time-response/combined/batch-init-session/v1?timeout=30&host_timeout_duration=25s";
+            // Initiate a batch session +Timeout duration for how long a host has time to complete processing. +
+            string batchSessUri = "/real-time-response/combined/batch-init-session/v1?timeout="+sTime+"&host_timeout_duration="+st.ToString()+"s";
             RestRequest sessionRqst = new RestRequest(batchSessUri, Method.Post);
             sessionRqst.AddHeader("accept", "application/json");
             sessionRqst.AddHeader("Content-Type", "application/json");
             sessionRqst.AddHeader("Authorization", "Bearer " + token);
             sessionRqst.AddBody(JsonbatchBody);
-            RestResponse sessionResponse = client.Execute(sessionRqst);
+            RestResponse sessionResponse = client.Execute(sessionRqst); 
+            File.AppendAllText(logFile, System.DateTime.Now + " - Post: batch-init-session \r\n");
+            Console.Write(System.DateTime.Now + " - Post: batch-init-session \r\n");
             SessRoot session = JsonConvert.DeserializeObject<SessRoot>(sessionResponse.Content);
             // Log Session Response Data
             string batchId = session.batch_id;
-            if(session.errors.Count() > 0)
+            File.AppendAllText(logFile, DateTime.Now + " Batch-init-Session Response: " + sessionResponse.StatusCode.ToString() + "\r\n");
+            File.AppendAllText(logFile, System.DateTime.Now + " - Batch Session ID: " + batchId + "\r\n");
+            Console.Write(System.DateTime.Now + " Batch-init-Session Response: " + sessionResponse.StatusCode.ToString() + "\r\n");
+            Console.Write(System.DateTime.Now + " - Batch Session ID: " + batchId + "\r\n");
+            if (session.errors.Count() > 0)
             {
                 string batchError = session.errors.FirstOrDefault().code + " - " + session.errors.FirstOrDefault().message;
                 File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + batchId + " Error:\r\n");
                 File.AppendAllText(logFile, batchError + "\r\n");
-                Console.WriteLine("Batch Session Error: Session ID = " + batchId + " "+ batchError + "\r\n");
+                Console.WriteLine("Batch Session Error: Session ID = " + batchId + "\r\n"+ batchError + "\r\n");
             }
             foreach(var ss in session.resources.Values) //Logs Communication Errors
             {
+                File.AppendAllText(logFile, "Batch Session Resources Message \r\n");
+                Console.WriteLine();
                 if (ss.errors.Count() > 0)
                 {
                     var dev = devIds.Where(x => x.Value == ss.aid).FirstOrDefault();
-                    File.AppendAllText(logFile, dev.Key + " - " + ss.errors.FirstOrDefault().message + "\r\n");
-                    Console.WriteLine(dev.Key + " - " + ss.errors.FirstOrDefault().message + "\r\n");
+                    File.AppendAllText(logFile, dev.Key + "\r\n" + ss.errors.FirstOrDefault().message + "\r\n");
+                    Console.WriteLine(dev.Key + "\r\n" + ss.errors.FirstOrDefault().message + "\r\n");
+                }
+                else
+                {
+                    var dev = devIds.Where(x => x.Value == ss.aid).FirstOrDefault();
+                    var a = ss.stdout;
+                    var b = ss.complete.ToString();
+                    var c = ss.query_time;
+                    File.AppendAllText(logFile, dev.Key + "\r\n");
+                    File.AppendAllText(logFile, "stdout: " + a + "\r\n");
+                    File.AppendAllText(logFile, "complete: " + b + "\r\n");
+                    File.AppendAllText(logFile, "query time: " + c + "\r\n");
+                    Console.WriteLine(dev.Key);
+                    Console.WriteLine("stdout: " + a);
+                    Console.WriteLine("complete: " + b);
+                    Console.WriteLine("query time: " + c);
                 }
             }
-            File.AppendAllText(logFile, DateTime.Now + " Batch-init-Session Request Status Code: " + sessionResponse.StatusCode.ToString() + "\r\n");
-            File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + batchId + "\r\n");
 
-            Dictionary<string, string> HostAid = new Dictionary<string, string>();
-            foreach (var sess in session.resources)
-            {
-                Dictionary<string, string> sessValues = new Dictionary<string, string>();
-                var host_name = devIds.FirstOrDefault(x => x.Value == sess.Value.aid).Key;
-                string errors = "";
-                foreach (var err in sess.Value.errors)
-                {
-                    errors += err.code.ToString() + " - " + err.message;
-                }
-                sessValues.Add("host_name", host_name);
-                sessValues.Add("aid", sess.Value.aid);
-                sessValues.Add("complete", sess.Value.complete.ToString());
-                sessValues.Add("session_id", sess.Value.session_id);
-                sessValues.Add("stdout", sess.Value.stdout);
-                sessValues.Add("stderr", sess.Value.stderr);
-                sessValues.Add("query_time", sess.Value.query_time.ToString());
-                sessValues.Add("offline_queued", sess.Value.offline_queued.ToString());
-                sessValues.Add("errors", errors);
-                HostAid.Add(sessValues.ElementAt(0).Value, sessValues.ElementAt(1).Value);
-                if (sess.Value.complete == false)
-                {
-                    File.AppendAllText(logFile, DateTime.Now + " Could not initiate session on host, Details Shown Below:"+ sessValues.ElementAt(0).Value +"\r\n");
-                    for (int i = 0; i< sessValues.Count; i++)
-                    {
-                        File.AppendAllText(logFile, sessValues.ElementAt(i).Key + " - " + sessValues.ElementAt(i).Value + "\r\n");
-                    }
-                }
-                else 
-                {
-                    File.AppendAllText(logFile, DateTime.Now + " Initiated session on host, Details Shown Below:" + sessValues.ElementAt(0).Value + "\r\n");
-                    for (int i = 0; i < sessValues.Count; i++)
-                    {
-                        File.AppendAllText(logFile, sessValues.ElementAt(i).Key + " - " + sessValues.ElementAt(i).Value + "\r\n");
-                    }
-                }
-            }
             // Step 2 Send Command
             string text = File.ReadLines(configFile).Skip(2).First().Split(':').LastOrDefault();
             string hh = "\\" + "\"";
             var command = text.Replace("\"", hh);
             string JsonbatchCmdBody = "{\"command_string\":\"" + command + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmd + "\"}";
             //string batchSessCmdUri = "https://api.crowdstrike.com/real-time-response/combined/batch-command/v1?timeout=300&host_timeout_duration=295s";
-            string batchSessCmdUri = "/real-time-response/combined/batch-active-responder-command/v1?timeout=300&host_timeout_duration=295s";
+            string batchSessCmdUri = "/real-time-response/combined/batch-active-responder-command/v1?timeout="+rTime+"&host_timeout_duration="+rt.ToString()+"s";
             RestRequest BatchSessCmdRqst = new RestRequest(batchSessCmdUri, Method.Post);
             BatchSessCmdRqst.AddHeader("accept", "application/json");
             BatchSessCmdRqst.AddHeader("Content-Type", "application/json");
             BatchSessCmdRqst.AddHeader("Authorization", "Bearer " + token);
             BatchSessCmdRqst.AddBody(JsonbatchCmdBody);
             RestResponse CmdResponse = client.Execute(BatchSessCmdRqst);
+            File.AppendAllText(logFile, System.DateTime.Now + " - Post: batch-active-responder-command \r\n");
+            Console.Write(System.DateTime.Now + " - Post: batch-active-responder-command \r\n");
             BatchCMDResponseRoot batCmdResp = JsonConvert.DeserializeObject<BatchCMDResponseRoot>(CmdResponse.Content);
-
+            File.AppendAllText(logFile, System.DateTime.Now + " Batch-Active-Responder-CMD Response: " + CmdResponse.StatusCode.ToString() + "\r\n");
+            Console.Write(System.DateTime.Now + " Batch-Active-Responder-CMD Response: " + CmdResponse.StatusCode.ToString() + "\r\n");
             if (batCmdResp.Errors.Count() > 0 )
             {
                 try
@@ -154,47 +147,35 @@ namespace CrowdStrike_SW_Deployment
             {
                 for(int i = 0; i < batCmdResp.Combined.Resources.Count; i++ )
                 {
-                    foreach(var ho in HostAid)
+                    var dev = devIds.Where(x => x.Value == batCmdResp.Combined.Resources.ElementAt(i).Value.aid).FirstOrDefault();
+                    File.AppendAllText(logFile, DateTime.Now + " HOST: " + dev + "\r\n");
+                    Console.WriteLine(DateTime.Now + " HOST: " + dev);
+                    File.AppendAllText(logFile, "Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete + "\r\n");
+                    Console.WriteLine("Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete);
+                    File.AppendAllText(logFile, "StdOut: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stdout + "\r\n");
+                    Console.WriteLine("StdOut: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stdout);
+                    File.AppendAllText(logFile, "StdErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stderr + "\r\n");
+                    Console.WriteLine("StdErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stderr + "\r\n");
+                    if (batCmdResp.Combined.Resources.ElementAt(i).Value.errors.Count() > 0)
                     {
-                        if (ho.Value == batCmdResp.Combined.Resources.ElementAt(i).Key) 
-                        { 
-                            File.AppendAllText(ResultsTxt, DateTime.Now + " HOST: " + ho.Key + " = " + ho.Value + "\r\n");
-                            Console.WriteLine(DateTime.Now + " HOST: " + ho.Key + " = " + ho.Value + "\r\n");
-                        }
-                    }
-
-                    File.AppendAllText(ResultsTxt, "Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete + "\r\n");
-                    Console.WriteLine("Complete: " + batCmdResp.Combined.Resources.ElementAt(i).Value.complete + "\r\n");
-                    File.AppendAllText(ResultsTxt, "StdOut: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stdout + "\r\n");
-                    File.AppendAllText(ResultsTxt, "StdErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.stderr + "\r\n");
-                    if(batCmdResp.Combined.Resources.ElementAt(i).Value.errors.Count() > 0)
-                    {
-                        File.AppendAllText(ResultsTxt, "OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
+                        File.AppendAllText(logFile, "OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
                         Console.WriteLine("OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
                     }
                     
                 }
             }
             
-            
 
-            //SessRoot batchCmdResponse = JsonConvert.DeserializeObject<SessRoot>(CmdResponse.Content);
-            // Step 3 refersh session
-            // Step 4 Get command status, refresh session
-            // Step 5 Execute post install commands, wait
-            // Step 6 refresh session
-            // Step 7 Get post install command status
-
-            revokeToken(token, client);
+            revokeToken(token, client, clientId, secret);
 
         }
         public static Dictionary<string, string> GetDeviceIds(string Token, RestClient restClient)
         {
+            Console.WriteLine("Getting Device IDs from CS");
             var devIds = new Dictionary<string, string>();
             List<string> txtDevices = File.ReadAllLines(computersList).ToList();
             foreach (string txtDevice in txtDevices)
             {
-                Console.WriteLine("Getting Device ID from CS \r\n");
                 //filter by platform, serial_number, hostname
                 string hostsUri = "/devices/queries/devices/v1?limit=10&filter=hostname:" + "'" + txtDevice + "'";
                 RestRequest deviceRequest = new RestRequest(hostsUri, Method.Get);
@@ -202,16 +183,24 @@ namespace CrowdStrike_SW_Deployment
                 deviceRequest.AddHeader("Authorization", "Bearer " + Token);
                 RestResponse deviceResponse = restClient.Execute(deviceRequest);
                 GetDevices device = JsonConvert.DeserializeObject<GetDevices>(deviceResponse.Content);
-
-                if (device.resources == null || device.resources.Count == 0)
+                try
                 {
-                    Console.WriteLine(txtDevice + " - not found");
+                    if (device.resources == null || device.resources.Count == 0)
+                    {
+                        Console.WriteLine(txtDevice + " - not found");
+                    }
+                    else
+                    {
+                        devIds.Add(txtDevice, device.resources.FirstOrDefault());
+                        Console.WriteLine(txtDevice + " - " + device.resources.FirstOrDefault());
+                    }
                 }
-                else
+                catch (Exception ex) 
                 {
-                    Console.WriteLine(txtDevice + " - " + device.resources.FirstOrDefault());
-                    devIds.Add(txtDevice, device.resources.FirstOrDefault());
+                    Console.WriteLine("GetDeviceIDs Error: " + ex.Message);
+                    File.AppendAllText(logFile, "GetDeviceIDs Error: " + ex.Message); 
                 }
+                
             }
             return devIds;
         }
@@ -252,26 +241,30 @@ namespace CrowdStrike_SW_Deployment
                 if (oauthResponse.StatusCode == System.Net.HttpStatusCode.Created)
                 {
                     File.AppendAllText(logFile, DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString() + "\r\n");
+                    Console.WriteLine(DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString());
                 }
                 else
                 {
                     File.AppendAllText(logFile, DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString() + "\r\n");
+                    Console.WriteLine(DateTime.Now + " OAuth Request Status Code: " + oauthResponse.StatusCode.ToString() + "\r\n");
                     if (oauthResponse.ErrorMessage != null)
                     {
                         File.AppendAllText(logFile, "OAuth Request Error: " + oauthResponse.ErrorMessage + "\r\n");
+                        Console.WriteLine("OAuth Request Error: " + oauthResponse.ErrorMessage + "\r\n");
                     }
                 }
             }
             catch (Exception ex)
             {
                 File.AppendAllText(logFile, DateTime.Now + " OAuth Exception - " + ex.Message + "\r\n");
+                Console.WriteLine(DateTime.Now + " OAuth Exception - " + ex.Message + "\r\n");
             }
             return token;
         }
-        public static void revokeToken(string Token, RestClient restClient) 
+        public static void revokeToken(string Token, RestClient restClient, string clientIdd, string secrett) 
         {
-            string clientId = "25c9f63b71414eeda2f92752dbd8b0f3";
-            string secret = "jS0XA9gyhEim5CTlJUbet7Fq8GsZ36w4Dax12nLN";
+            string clientId = clientIdd;
+            string secret = secrett;
             string atobb64auth = Base64Encode(clientId + ":"+ secret);
             RestRequest revokeRequest = new RestRequest("/oauth2/revoke", Method.Post);
             revokeRequest.AddHeader("accept", "application/json");
