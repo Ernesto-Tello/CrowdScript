@@ -27,6 +27,9 @@ namespace CrowdStrike_SW_Deployment
         public static string computersList = wd + "//TXT//ComputersList.txt";
         public static string configFile = wd + "//TXT//ConfigurationFile.txt";
         public static string logFile = wd + "//TXT//log.txt";
+        public static string commsErrLog = wd + "//TXT//device_comms_error.txt";
+        public static string devCmdUncompleted = wd + "//TXT//device_cmd_uncompleted.txt";
+        public static string devNotFound = wd + "//TXT//device_not_found.txt";
         public static string ConfRtrFileName = File.ReadLines(configFile).First().Split(':').LastOrDefault();
 
         static void Main(string[] args)
@@ -94,6 +97,10 @@ namespace CrowdStrike_SW_Deployment
                     var dev = devIds.Where(x => x.Value == ss.aid).FirstOrDefault();
                     File.AppendAllText(logFile, dev.Key + "\r\n" + ss.errors.FirstOrDefault().message + "\r\n");
                     Console.WriteLine(dev.Key + "\r\n" + ss.errors.FirstOrDefault().message + "\r\n");
+                    if(ss.errors.FirstOrDefault().message == "Could not establish sensor comms")
+                    {
+                        File.AppendAllText(commsErrLog, dev.Key + "\r\n");
+                    }
                 }
                 else
                 {
@@ -112,6 +119,7 @@ namespace CrowdStrike_SW_Deployment
                 }
             }
 
+            // Step 2 Send Command
             string text = File.ReadLines(configFile).Skip(2).First().Split(':').LastOrDefault();
             string hh = "\\" + "\"";
             var command = text.Replace("\"", hh);
@@ -160,6 +168,10 @@ namespace CrowdStrike_SW_Deployment
                         File.AppendAllText(logFile, "OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
                         Console.WriteLine("OtherErr: " + batCmdResp.Combined.Resources.ElementAt(i).Value.errors.FirstOrDefault().message + "\r\n");
                     }
+                    if(batCmdResp.Combined.Resources.ElementAt(i).Value.complete == false)
+                    {
+                        File.AppendAllText(devCmdUncompleted, dev.Key + "\r\n");
+                    }
                     
                 }
             }
@@ -187,6 +199,7 @@ namespace CrowdStrike_SW_Deployment
                     if (device.resources == null || device.resources.Count == 0)
                     {
                         Console.WriteLine(txtDevice + " - not found");
+                        File.AppendAllText(devNotFound, txtDevice + "\r\n");
                     }
                     else
                     {
