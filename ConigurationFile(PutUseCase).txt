@@ -1,0 +1,10 @@
+File name:
+Base Command:put
+Main Command:put Sysmon64.exe, splunkclouduf.spl, sysmonconfig-with-filedelete.xml, splunkforwarder-9.1.2-b6b9c8185839-x64-release.msi
+Post Install Base Command:
+Post Install Main Command:
+Queue Offline:False
+Session Timeout:240
+RTR Cmd Timeout:300
+API Secret:
+API Client ID:
