@@ -17,6 +17,15 @@ using System.Collections;
 using System.Security.Cryptography;
 using System.Net.Sockets;
 using static System.Net.Mime.MediaTypeNames;
+using System.Collections.Immutable;
+using System.Reflection.Metadata;
+using System.Runtime.InteropServices;
+using System.Text.Unicode;
+using System.Text;
+using System.ComponentModel.DataAnnotations;
+using System.Security.AccessControl;
+using System.Runtime.ConstrainedExecution;
+using System.Threading;
 
 namespace CrowdStrike_SW_Deployment
 {
@@ -31,11 +40,15 @@ namespace CrowdStrike_SW_Deployment
         public static string devCmdUncompleted = wd + "//TXT//device_cmd_uncompleted.txt";
         public static string devNotFound = wd + "//TXT//device_not_found.txt";
         public static string ConfRtrFileName = File.ReadLines(configFile).First().Split(':').LastOrDefault();
+        Dictionary<string, string> devIds;
 
         static void Main(string[] args)
         {
             string baseCmd = File.ReadLines(configFile).Skip(1).Take(1).First().Split(':').LastOrDefault();
-            string mainCmd = File.ReadLines(configFile).Skip(2).Take(1).First().Split(':').LastOrDefault();
+            string mainCmd = File.ReadLines(configFile).Skip(2).Take(1).First().Substring(13);
+            string baseCmdII = File.ReadLines(configFile).Skip(3).Take(1).First().Split(':').LastOrDefault();
+            string mainCmdII = File.ReadLines(configFile).Skip(4).Take(1).First().Substring(26);
+            string queueOffline = File.ReadLines(configFile).Skip(5).Take(1).First().Split(':').LastOrDefault();
             string sTime = File.ReadLines(configFile).Skip(6).Take(1).First().Split(':').LastOrDefault();
             int st = Convert.ToInt32(sTime) - 5;
             string rTime = File.ReadLines(configFile).Skip(7).Take(1).First().Split(':').LastOrDefault();
@@ -43,6 +56,18 @@ namespace CrowdStrike_SW_Deployment
             string secret = File.ReadLines(configFile).Skip(8).Take(1).First().Split(':').LastOrDefault();
             string clientId = File.ReadLines(configFile).Skip(9).Take(1).First().Split(':').LastOrDefault();
             string oauthData = "client_id=" + clientId + "&client_secret=" + secret;
+            List<string> dirCommands = new List<string>();
+            dirCommands.Add("ls");
+            dirCommands.Add("cd");
+            dirCommands.Add("cp");
+            dirCommands.Add("rm");
+            dirCommands.Add("mv");
+            dirCommands.Add("get");
+            dirCommands.Add("put");
+            dirCommands.Add("cat");
+            dirCommands.Add("filehash");
+            dirCommands.Add("mkdir");
+            dirCommands.Add("zip");
             RestClientOptions options = new RestClientOptions(baseURL)
             {
                 MaxTimeout = 300000,
@@ -53,14 +78,204 @@ namespace CrowdStrike_SW_Deployment
            string token = GetToken(client, clientId, secret);
 
             //Get metadata from API for the filename in config txt; based on Only Run Script Parameter
+            ////NOT Used////
             string rtrFileId = "";
             if (ConfRtrFileName != "")
             {
                 rtrFileId = GetRtrPutFileId(token, client);
             }
-            // GET Device IDs from API
-            Dictionary<string, string> devIds = GetDeviceIds(token, client);
 
+            // GET Device IDs from API
+            Dictionary<string, string> 
+                devIds = GetDeviceIds(token, client);
+
+            // PUT File API Process //
+            if (baseCmd == "put")
+            {
+                string sessionUri = "/real-time-response/entities/sessions/v1?timeout=600";
+                string admCommandUri = "/real-time-response/entities/admin-command/v1";
+                bool qu = bool.Parse(queueOffline);
+                // PUT FILE Single HOST: 
+                if (devIds.Count == 1)
+                {
+                    //Create Single session//
+                    string JsonSessBody = "{\"device_id\":\"" + devIds.FirstOrDefault().Value + "\",\"queue_offline\":" + qu.ToString().ToLower() + "}";
+                    RestRequest singleSess = new RestRequest(sessionUri, Method.Post);
+                    singleSess.AddHeader("accept", "application/json");
+                    singleSess.AddHeader("Content-Type", "application/json");
+                    singleSess.AddHeader("Authorization", "Bearer " + token);
+                    singleSess.AddBody(JsonSessBody);
+                    RestResponse sessResp = client.Execute(singleSess);
+                    File.AppendAllText(logFile, System.DateTime.Now + " - Post: /real-time-response/entities/sessions \r\n");
+                    Console.Write(System.DateTime.Now + " - Post: /real-time-response/entities/sessions \r\n");
+                    SesRoot sess = JsonConvert.DeserializeObject<SesRoot>(sessResp.Content);
+
+                    // Log Session Response Data
+                    string sessId = sess.resources.FirstOrDefault().session_id;
+                    File.AppendAllText(logFile, DateTime.Now + " /real-time-response/entities/sessions: " + sessResp.StatusCode.ToString() + "\r\n");
+                    File.AppendAllText(logFile, System.DateTime.Now + " - Session ID: " + sessId + "\r\n");
+                    Console.Write(System.DateTime.Now + " /real-time-response/entities/sessions: " + sessResp.StatusCode.ToString() + "\r\n");
+                    Console.Write(System.DateTime.Now + " - Session ID: " + sessId + "\r\n");
+                    try
+                    {
+                        if (sess.errors.Count() != null)
+                        {
+                            string sesserr = sess.errors.FirstOrDefault().code + " - " + sess.errors.FirstOrDefault().message;
+                            File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + sessId + " Error:\r\n");
+                            File.AppendAllText(logFile, sesserr + "\r\n");
+                            Console.WriteLine("Session Error: Session ID = " + sessId + "\r\n" + sesserr + "\r\n");
+                        }
+                    }
+                    catch
+                    {
+                        File.AppendAllText(logFile, "\r\n no errors in session");
+                        Console.WriteLine("\r\n no errors in session" + "\r\n");
+
+                    }
+                    var a = sess.resources.FirstOrDefault().pwd;
+                    var b = sess.resources.FirstOrDefault().created_at;
+                    var c = sess.resources.FirstOrDefault().session_id;
+                    File.AppendAllText(logFile, "pwd: " + a + "\r\n");
+                    File.AppendAllText(logFile, "created_at: " + b + "\r\n");
+                    File.AppendAllText(logFile, "session_id time: " + c + "\r\n");
+                    Console.WriteLine("pwd: " + a);
+                    Console.WriteLine("created_at: " + b);
+                    Console.WriteLine("query session_id: " + c);
+
+                    //Put Files
+                    if(mainCmd.Contains(','))
+                    {
+                        //create individual put commands
+                        //usage: Main Command:put Sysmon64.exe, splunkclouduf.spl, somefile.txt
+                        var filenames = mainCmd.Split(',');
+                        List<string> putcommands = new List<string>();
+                        putcommands.Add(filenames[0]);                        
+                        for(int i = 1; i < filenames.Count(); i++)
+                        {
+                            string command = "put" + filenames[i];
+                            putcommands.Add(command);
+                        }
+                        foreach(var pc in putcommands)
+                        {
+                            //wait 5 sec for next put command
+                            if(pc != putcommands.ElementAt(0))
+                            {
+                                Thread.Sleep(5000);
+                            }
+                            // Send Put commands
+                            string JsonPutBody = "{\"command_string\":\"" + pc + "\",\"session_id\":\"" + c + "\",\"base_command\":\"put\"}";
+                            RestRequest admCommandRqst = new RestRequest(admCommandUri, Method.Post);
+                            admCommandRqst.AddHeader("accept", "application/json");
+                            admCommandRqst.AddHeader("Content-Type", "application/json");
+                            admCommandRqst.AddHeader("Authorization", "Bearer " + token);
+                            admCommandRqst.AddBody(JsonPutBody);
+                            RestResponse commandResp = client.Execute(admCommandRqst);
+                            if (commandResp.ResponseStatus == ResponseStatus.Completed)
+                            {
+                                Console.WriteLine("\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                                File.AppendAllText(logFile, "\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                            }
+                            else
+                            {
+                                Console.WriteLine("\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + commandResp.ResponseStatus.ToString());
+                                File.AppendAllText(logFile, "\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                            }
+                        }
+                    }
+
+                    
+                }
+                // PUT File Multi-Host//
+                if (devIds.Count > 1)
+                {
+                    foreach ( var devId in devIds)
+                    {
+                        string JsonSessBody = "{\"device_id\":\"" + devId.Value + "\",\"queue_offline\":" + qu.ToString().ToLower() + "}";
+                        RestRequest singleSess = new RestRequest(sessionUri, Method.Post);
+                        singleSess.AddHeader("accept", "application/json");
+                        singleSess.AddHeader("Content-Type", "application/json");
+                        singleSess.AddHeader("Authorization", "Bearer " + token);
+                        singleSess.AddBody(JsonSessBody);
+                        RestResponse sessResp = client.Execute(singleSess);
+                        File.AppendAllText(logFile, System.DateTime.Now + " - Post: /real-time-response/entities/sessions \r\n");
+                        Console.Write(System.DateTime.Now + " - Post: /real-time-response/entities/sessions \r\n");
+                        SesRoot sess = JsonConvert.DeserializeObject<SesRoot>(sessResp.Content);
+                        // Log Session Response Data
+                        string sessId = sess.resources.FirstOrDefault().session_id;
+                        File.AppendAllText(logFile, DateTime.Now + " /real-time-response/entities/sessions: " + sessResp.StatusCode.ToString() + "\r\n");
+                        File.AppendAllText(logFile, System.DateTime.Now + " - Session ID: " + sessId + "\r\n");
+                        Console.Write(System.DateTime.Now + " /real-time-response/entities/sessions: " + sessResp.StatusCode.ToString() + "\r\n");
+                        Console.Write(System.DateTime.Now + " - Session ID: " + sessId + "\r\n");
+                        try
+                        {
+                            if (sess.errors.Count() != null)
+                            {
+                                string sesserr = sess.errors.FirstOrDefault().code + " - " + sess.errors.FirstOrDefault().message;
+                                File.AppendAllText(logFile, DateTime.Now + " Batch ID:" + sessId + " Error:\r\n");
+                                File.AppendAllText(logFile, sesserr + "\r\n");
+                                Console.WriteLine("Session Error: Session ID = " + sessId + "\r\n" + sesserr + "\r\n");
+                            }
+                        }
+                        catch
+                        {
+                            File.AppendAllText(logFile, "\r\n no errors in session");
+                            Console.WriteLine("\r\n no errors in session" + "\r\n");
+
+                        }
+                        var a = sess.resources.FirstOrDefault().pwd;
+                        var b = sess.resources.FirstOrDefault().created_at;
+                        var c = sess.resources.FirstOrDefault().session_id;
+                        File.AppendAllText(logFile, "pwd: " + a + "\r\n");
+                        File.AppendAllText(logFile, "created_at: " + b + "\r\n");
+                        File.AppendAllText(logFile, "session_id time: " + c + "\r\n");
+                        Console.WriteLine("pwd: " + a);
+                        Console.WriteLine("created_at: " + b);
+                        Console.WriteLine("query session_id: " + c);
+
+                        //Put Files
+                        if (mainCmd.Contains(','))
+                        {
+                            //create individual put commands
+                            //usage: Main Command:put Sysmon64.exe, splunkclouduf.spl, somefile.txt
+                            var filenames = mainCmd.Split(',');
+                            List<string> putcommands = new List<string>();
+                            putcommands.Add(filenames[0]);
+                            for (int i = 1; i < filenames.Count(); i++)
+                            {
+                                string command = "put" + filenames[i];
+                                putcommands.Add(command);
+                            }
+                            foreach (var pc in putcommands)
+                            {
+                                //wait 5 sec for next put command
+                                if (pc != putcommands.ElementAt(0))
+                                {
+                                    Thread.Sleep(5000);
+                                }
+                                // Send Put commands
+                                string JsonPutBody = "{\"command_string\":\"" + pc + "\",\"session_id\":\"" + c + "\",\"base_command\":\"put\"}";
+                                RestRequest admCommandRqst = new RestRequest(admCommandUri, Method.Post);
+                                admCommandRqst.AddHeader("accept", "application/json");
+                                admCommandRqst.AddHeader("Content-Type", "application/json");
+                                admCommandRqst.AddHeader("Authorization", "Bearer " + token);
+                                admCommandRqst.AddBody(JsonPutBody);
+                                RestResponse commandResp = client.Execute(admCommandRqst);
+                                if (commandResp.ResponseStatus == ResponseStatus.Completed)
+                                {
+                                    Console.WriteLine("\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                                    File.AppendAllText(logFile, "\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + commandResp.ResponseStatus.ToString());
+                                    File.AppendAllText(logFile, "\r\n" + admCommandUri + "\r\n" + JsonPutBody + "\r\n" + "Response: Completed");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        
             // Create Batch Body for the POST request to initiate multple sessions
             string JsonbatchBody = CreateBatchBody(devIds);
             File.AppendAllText(logFile, "JsonbatchBody ready for POST \r\n");
@@ -120,10 +335,24 @@ namespace CrowdStrike_SW_Deployment
             }
 
             // Step 2 Send Command
-            string text = File.ReadLines(configFile).Skip(2).First().Split(':').LastOrDefault();
-            string hh = "\\" + "\"";
-            var command = text.Replace("\"", hh);
-            string JsonbatchCmdBody = "{\"command_string\":\"" + command + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmd + "\"}";
+            string JsonbatchCmdBody = "";
+            if (dirCommands.Contains(baseCmd))
+            {
+                // required for any commands taking a directory path; Add 4 backslash to look like C:\\ 
+                string formatCmd = mainCmd.Replace("\\","\\\\");
+                // required to fix spaces
+                string hh = "\\" + "\"";
+                string goodCmd = formatCmd.Replace("\"", hh);
+                JsonbatchCmdBody = "{\"command_string\":\"" + goodCmd + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmd + "\"}";
+
+            }
+            else
+            { //required for commands using quotation marks; runscript""
+                string hh = "\\" + "\"";
+                var command = mainCmd.Replace("\"", hh);
+                JsonbatchCmdBody = "{\"command_string\":\"" + command + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmd + "\"}";
+            }
+
             //string batchSessCmdUri = "https://api.crowdstrike.com/real-time-response/combined/batch-command/v1?timeout=300&host_timeout_duration=295s";
             string batchSessCmdUri = "/real-time-response/combined/batch-active-responder-command/v1?timeout="+rTime+"&host_timeout_duration="+rt.ToString()+"s";
             RestRequest BatchSessCmdRqst = new RestRequest(batchSessCmdUri, Method.Post);
@@ -132,6 +361,47 @@ namespace CrowdStrike_SW_Deployment
             BatchSessCmdRqst.AddHeader("Authorization", "Bearer " + token);
             BatchSessCmdRqst.AddBody(JsonbatchCmdBody);
             RestResponse CmdResponse = client.Execute(BatchSessCmdRqst);
+            //Send Rest Response to logging function
+            logger(CmdResponse,devIds);
+
+            //Step 3 Send second set of commands
+            if ( baseCmdII != "" && mainCmdII != "")
+            {
+                string JsonbatchCmdBodyII = "";
+                if (dirCommands.Contains(baseCmd))
+                {
+                    // required for any commands taking a directory path; Add 4 backslash to look like C:\\ 
+                    string formatCmd = mainCmdII.Replace("\\", "\\\\");
+                    // required to fix spaces
+                    string hh = "\\" + "\"";
+                    string goodCmd = formatCmd.Replace("\"", hh);
+                    JsonbatchCmdBodyII = "{\"command_string\":\"" + goodCmd + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmdII + "\"}";
+
+                }
+                else
+                { //required for commands using quotation marks; runscript""
+                    string text = mainCmdII;
+                    string hh = "\\" + "\"";
+                    var command = text.Replace("\"", hh);
+                    JsonbatchCmdBodyII = "{\"command_string\":\"" + command + "\",\"batch_id\":\"" + batchId + "\",\"base_command\":\"" + baseCmdII + "\"}";
+                }
+                RestRequest BatchRqstII = new RestRequest(batchSessCmdUri, Method.Post);
+                BatchRqstII.AddHeader("accept", "application/json");
+                BatchRqstII.AddHeader("Content-Type", "application/json");
+                BatchRqstII.AddHeader("Authorization", "Bearer " + token);
+                BatchRqstII.AddBody(JsonbatchCmdBodyII);
+                RestResponse CmdResponseII = client.Execute(BatchRqstII);
+                //Send Rest Response to logging function
+                logger(CmdResponseII, devIds);
+            }
+            
+
+            revokeToken(token, client, clientId, secret);
+
+        }
+
+        public static void logger (RestResponse CmdResponse, Dictionary<string, string> devIds)
+        {
             File.AppendAllText(logFile, System.DateTime.Now + " - Post: batch-active-responder-command \r\n");
             Console.Write(System.DateTime.Now + " - Post: batch-active-responder-command \r\n");
             BatchCMDResponseRoot batCmdResp = JsonConvert.DeserializeObject<BatchCMDResponseRoot>(CmdResponse.Content);
@@ -175,10 +445,6 @@ namespace CrowdStrike_SW_Deployment
                     
                 }
             }
-            
-
-            revokeToken(token, client, clientId, secret);
-
         }
         public static Dictionary<string, string> GetDeviceIds(string Token, RestClient restClient)
         {
@@ -507,5 +773,77 @@ namespace CrowdStrike_SW_Deployment
         [JsonProperty("resources")]
         public Dictionary<string, Resource> Resources { get; set; }
     }
+
+    //Single Session
+    // Root myDeserializedClass = JsonConvert.DeserializeObject<Root>(myJsonResponse);
+    // Root myDeserializedClass = JsonConvert.DeserializeObject<Root>(myJsonResponse);
+    public class SesArg
+    {
+        public int id { get; set; }
+        public DateTime created_at { get; set; }
+        public DateTime updated_at { get; set; }
+        public int script_id { get; set; }
+        public string arg_type { get; set; }
+        public string data_type { get; set; }
+        public bool requires_value { get; set; }
+        public string arg_name { get; set; }
+        public string description { get; set; }
+        public string default_value { get; set; }
+        public bool required { get; set; }
+        public int sequence { get; set; }
+        public object options { get; set; }
+        public string encoding { get; set; }
+        public string command_level { get; set; }
+    }
+
+    public class SesMeta
+    {
+        public double query_time { get; set; }
+        public string powered_by { get; set; }
+        public string trace_id { get; set; }
+    }
+
+    public class SesResource
+    {
+        public string session_id { get; set; }
+        public List<SesScript> scripts { get; set; }
+        public int existing_aid_sessions { get; set; }
+        public string created_at { get; set; }
+        public string pwd { get; set; }
+        public bool offline_queued { get; set; }
+    }
+
+    public class SesRoot
+    {
+        public SesMeta meta { get; set; }
+        public List<SesResource> resources { get; set; }
+        public List<SessError> errors { get; set; }
+    }
+
+    public class SesScript
+    {
+        public string command { get; set; }
+        public string description { get; set; }
+        public string examples { get; set; }
+        public bool internal_only { get; set; }
+        public bool runnable { get; set; }
+        public List<SesSubCommand> sub_commands { get; set; }
+        public List<SesArg> args { get; set; }
+    }
+
+    public class SesSubCommand
+    {
+        public string command { get; set; }
+        public string description { get; set; }
+        public string examples { get; set; }
+        public bool internal_only { get; set; }
+        public bool runnable { get; set; }
+        public List<object> sub_commands { get; set; }
+        public List<SesArg> args { get; set; }
+    }
+
+
+
+
 
 }
